@@ -1,0 +1,6 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="db">
+    <output-path>$PROJECT_DIR$/test/</output-path>
+    <root id="archive" name="pf-2021-kvdb.jar" />
+  </artifact>
+</component>

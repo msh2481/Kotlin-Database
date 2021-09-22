@@ -1,6 +1,12 @@
 import java.io.File
 import java.util.*
 import kotlin.system.exitProcess
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
+import javax.xml.crypto.Data
+
 
 /** TODO
  * OOP?
@@ -11,53 +17,25 @@ import kotlin.system.exitProcess
  * Hashes
  */
 
-class Database(val file: String? = null) {
+@Serializable
+class Database() {
     val data = mutableMapOf<String, String>()
-    init {
-        file?.let{
-            val read = Scanner(File(it))
-            if (!read.hasNextInt()) {
-                throw RuntimeException("Bad file format: there should be entries count in the beginning")
-            }
-            val entriesCnt = read.nextInt()
-            val lenList = mutableListOf<Int>()
-            repeat(2 * entriesCnt) {
-                if (!read.hasNextInt()) {
-                    throw RuntimeException("Bad file format: not enough length definitions")
-                }
-                lenList.add(read.nextInt())
-            }
-            val text = read.next()
-            var pos = 0
-            lenList.chunked(2).forEach{ (keyLen, valLen) ->
-                data[text.substring(pos, pos + keyLen)] = text.substring(pos + keyLen, pos + keyLen + valLen)
-                pos += keyLen + valLen
-            }
-            println(data)
-        }
-    }
-    fun save() {
-        file?.let{
-            File(file).printWriter().use{ out ->
-                out.println(data.size)
-                data.forEach{ key, value ->
-                    out.println("${key.length} ${value.length}")
-                }
-                data.forEach{ key, value ->
-                    out.print(key + value)
-                }
-            }
-        }
-    }
+    fun fetch(key: String) =
 }
+
+fun encodeToString(base: Database) : String = Json.encodeToString(base)
+fun decodeFromString(arg: String) : Database = Json.decodeFromString(arg)
 
 class DatabaseList {
     val bases = mutableMapOf<String, Database>()
 
-    fun take(name: String) = bases.getOrDefault(name, Database())
-    fun open(file: String, name: String) = bases.put(name, Database(file))
+    fun fetchDatabase(name: String) = bases.getValue(name)
+    fun open(file: String, base: String) {
+        val str : String = File(file).readText()
+        bases.put(base, decodeFromString(str))
+    }
     fun close(name: String) = bases.remove(name)
-    fun save(name: String) = bases.getValue(name).save()
+    fun save(file: String, base: String) = File(file).writeText(encodeToString(fetchDatabase(base))).also{}
 }
 
 fun greeting() = println("""
@@ -73,6 +51,6 @@ fun greeting() = println("""
 fun main(args: Array<String>) {
     greeting()
     val dbList = DatabaseList()
-    dbList.take("a")
-    dbList.open("f.txt", "f")
+    dbList.open("g.txt", "g")
+    dbList.save("f.txt", "g")
 }
