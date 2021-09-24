@@ -1,0 +1,18 @@
+create a
+store a 1 1
+store a 2 4
+store a 3 9
+store a 4 16
+store a 5 25
+save a f.txt
+fetch a 0
+fetch a 1
+fetch a 5
+fetch a 6
+fetch a "0"
+fetch a "1"
+open b f.txt
+print b
+save b g.txt
+quit
+exit
