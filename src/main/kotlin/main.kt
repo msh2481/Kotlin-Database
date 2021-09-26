@@ -3,16 +3,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
-import com.github.ajalt.clikt.core.CliktCommand
-import com.github.ajalt.clikt.core.NoOpCliktCommand
-import com.github.ajalt.clikt.core.subcommands
-import com.github.ajalt.clikt.output.*
-import com.github.ajalt.clikt.parameters.options.*
-import com.github.ajalt.clikt.parameters.arguments.*
 import kotlin.system.exitProcess
 
 /** TODO
- * Clickt
  * Readme
  * Tests
  * Hashes
@@ -123,6 +116,17 @@ object DatabaseList {
             ""
         }
     }
+    fun copy(baseA: String, baseB: String) : Unit {
+        val A = bases[baseA]
+        val B = bases[baseB]
+        if (A == null) {
+            println("Invalid first argument")
+        } else if (B == null) {
+            println("Invalid second argument")
+        } else {
+            B.import(A)
+        }
+    }
 }
 
 fun greeting() = println("""
@@ -137,85 +141,30 @@ fun greeting() = println("""
     exit                    to quit program
 """.trimIndent())
 
-class Cli : CliktCommand() {
-    override fun run() {
-        greeting()
-        while (true) {
-            val line = readLine()
-            if (line == null) {
-                break
-            }
-            if (line.isBlank()) {
-                continue
-            }
-            val tokens = line.split(' ', '\t')
-            assert(tokens.isNotEmpty())
-            when (tokens.first()) {
-                "create" -> DatabaseList.create(tokens[1])
-                "open" -> DatabaseList.open(tokens[1], tokens[2])
-                "close" -> DatabaseList.close(tokens[1])
-                "store" -> DatabaseList.store(tokens[1], tokens[2], tokens[3])
-                "fetch" -> println(DatabaseList.fetch(tokens[1], tokens[2]))
-                "save" -> DatabaseList.save(tokens[1], tokens[2])
-                "print" -> println(DatabaseList.print(tokens[1]))
-                "exit" -> break
-                else -> println("Failed to parse your command: ${tokens.first()}")
-            }
+
+fun main(args: Array<String>) {
+    greeting()
+    while (true) {
+        val line = readLine()
+        if (line == null) {
+            break
+        }
+        if (line.isBlank()) {
+            continue
+        }
+        val tokens = line.split(' ', '\t')
+        assert(tokens.isNotEmpty())
+        when (tokens.first()) {
+            "create" -> DatabaseList.create(tokens[1])
+            "open" -> DatabaseList.open(tokens[1], tokens[2])
+            "close" -> DatabaseList.close(tokens[1])
+            "store" -> DatabaseList.store(tokens[1], tokens[2], tokens[3])
+            "fetch" -> println(DatabaseList.fetch(tokens[1], tokens[2]))
+            "save" -> DatabaseList.save(tokens[1], tokens[2])
+            "print" -> println(DatabaseList.print(tokens[1]))
+            "copy" -> DatabaseList.copy(tokens[1], tokens[2])
+            "exit" -> break
+            else -> println("Failed to parse your command: ${tokens.first()}")
         }
     }
 }
-
-class Create : CliktCommand() {
-    val databaseName : String by argument()
-    override fun run() = DatabaseList.create(databaseName)
-}
-
-class Open : CliktCommand() {
-    val databaseName : String by argument()
-    val fileName : String by argument()
-    override fun run() = DatabaseList.open(databaseName, fileName)
-}
-
-class Close : CliktCommand() {
-    val databaseName : String by argument()
-    override fun run() = DatabaseList.close(databaseName)
-}
-
-class Store : CliktCommand() {
-    val databaseName : String by argument()
-    val key : String by argument()
-    val value : String by argument()
-    override fun run() = DatabaseList.store(databaseName, key, value)
-}
-
-class Fetch : CliktCommand() {
-    val databaseName : String by argument()
-    val key : String by argument()
-    override fun run() = echo(DatabaseList.fetch(databaseName, key))
-}
-
-class Save : CliktCommand() {
-    val databaseName : String by argument()
-    val fileName : String by argument()
-    override fun run() = DatabaseList.save(databaseName, fileName)
-}
-
-class Print : CliktCommand() {
-    val databaseName : String by argument()
-    override fun run() = echo(DatabaseList.print(databaseName))
-}
-
-class Exit : CliktCommand() {
-    val databaseName : String by argument()
-    override fun run() = exitProcess(0)
-}
-
-fun main(args: Array<String>) = Cli().subcommands(
-    Create(),
-    Open(),
-    Close(),
-    Store(),
-    Fetch(),
-    Save(),
-    Print(),
-    Exit()).main(args)
