@@ -27,34 +27,36 @@ internal class Test1 {
         db.store("key", "value")
         assertEquals("", db.fetch("other key"))
         assertEquals("value", db.fetch("key"))
-        val json = encodeToJson(db)
+        val json = db.encodeToJson()
         assertEquals("{\"data\":{\"key\":\"value\"}}", json)
-        val db2 = decodeFromJson(json)
-        assertEquals("value", db.fetch("key"))
+        val db2 = Database(json)
+        assertEquals("value", db2.fetch("key"))
+        val db3 = Database()
+        db3.store("key", "new value")
+        db2.import(db3)
         print(db2)
         assertEquals("There is no such key in the database\n" +
-                "key value".trim(), streamOut.toString().trim().filter{ it != '\r'})
+                "key new value".trim(), streamOut.toString().trim().filter{ it != '\r'})
     }
 
     @Test
     fun testDatabaseList() {
-        val bases = DatabaseList()
-        bases.create("a")
-        bases.store("a", "ключ", "значение")
+        DatabaseList.create("a")
+        DatabaseList.store("a", "ключ", "значение")
         assertEquals("Content of a:\n" +
-                "ключ значение", bases.print("a"))
-        bases.store("a", "key 1", "value 1")
-        bases.store("a", "key 2", "value 2")
-        assertEquals("значение", bases.fetch("a", "ключ"))
-        assertEquals("", bases.fetch("a", "b"))
-        assertEquals("", bases.fetch("b", "b"))
-        bases.save("a", "a.txt")
-        bases.close("a")
-        bases.open("b", "a.txt")
-        bases.open("c", "no.file")
-        assertEquals("value 1", bases.fetch("b", "key 1"))
-        assertEquals("Created database 'a'\n" +
-                "There is no such key in the database\n" +
+                "ключ значение", DatabaseList.print("a"))
+        DatabaseList.store("a", "key 1", "value 1")
+        DatabaseList.store("a", "key 2", "value 2")
+        assertEquals("значение", DatabaseList.fetch("a", "ключ"))
+        assertEquals("", DatabaseList.fetch("a", "b"))
+        assertEquals("", DatabaseList.fetch("b", "b"))
+        DatabaseList.save("a", "a.txt")
+        DatabaseList.close("a")
+        DatabaseList.open("b", "a.txt")
+        DatabaseList.open("c", "no.file")
+        assertEquals("value 1", DatabaseList.fetch("b", "key 1"))
+        DatabaseList.create("c")
+        assertEquals("There is no such key in the database\n" +
                 "There is no such database\n" +
                 "Can't open file no.file".trim(), streamOut.toString().trim().filter{ it != '\r'})
     }

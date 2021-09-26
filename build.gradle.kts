@@ -14,7 +14,8 @@ repositories {
 dependencies {
     implementation(kotlin("stdlib"))
     testImplementation(kotlin("test"))
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.2.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.3.0-RC")
+    implementation("com.github.ajalt.clikt:clikt:3.2.0")
 }
 
 tasks.getByName<Test>("test") {
@@ -24,6 +25,8 @@ tasks.getByName<Test>("test") {
 application {
     mainClass.set("MainKt")
 }
+
+tasks.withType<Jar> { duplicatesStrategy = DuplicatesStrategy.WARN }
 
 tasks.jar {
     manifest {
