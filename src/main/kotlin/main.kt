@@ -34,13 +34,12 @@ class Database() {
     val data = mutableMapOf<String, String>()
 
     constructor(json: String) : this() {
-        import(Json.decodeFromString<Database>(json))
+        data.putAll(Json.decodeFromString<Database>(json).data)
     }
 
     fun fetch(key: String) = data[key] ?: println("There is no such key in the database").let{ "" }
     fun store(key: String, value: String) = data.put(key, value)
     override fun toString() = data.map{ (key, value) -> "$key $value"}.joinToString(separator = "\n")
-    fun import(other: Database) = data.putAll(other.data)
     fun encodeToJson() = Json.encodeToString(this)
 }
 
@@ -124,7 +123,7 @@ object DatabaseList {
         } else if (B == null) {
             println("Invalid second argument")
         } else {
-            B.import(A)
+            B.data.putAll(A.data)
         }
     }
 }
