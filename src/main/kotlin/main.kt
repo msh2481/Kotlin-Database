@@ -28,35 +28,84 @@ fun ByteArray.toHex(): String = asUByteArray().joinToString("") { it.toString(ra
  */
 fun stringHash(str: String): ByteArray = MessageDigest.getInstance("SHA-256").digest(str.toByteArray(UTF_8))
 
-class Database(filename: String) {
-    val TEXT_BLOCK_SIZE = 32
-    val MAX_NODE_SIZE = 64
-    val file = RandomAccessFile(filename, "rw")
+val MAX_STRING_SIZE = 32
+val MAX_NODE_SIZE = 64
+val file = RandomAccessFile("file.txt", "rw")
+var firstFreeOffset = 0
 
-    inner class NodePointer(val offset: Int) {
-        inline fun <reified NodeType> getValue(node: NodeType, property: KProperty<*>) : NodeType {
-            val buffer = ByteArray(MAX_NODE_SIZE)
-            try {
-                file.readFully(buffer, offset, MAX_NODE_SIZE)
-            } catch (e: IOError) {
-                println(e)
-                println("Failed to read bytes at [$offset; $offset + $MAX_NODE_SIZE) ")
-            }
-            return Json.decodeFromString(buffer.toString())
+inline fun <reified NodeType> readNode(offset: Int) : NodeType {
+    val buffer = ByteArray(MAX_NODE_SIZE)
+    try {
+        file.seek(offset.toLong())
+        file.read(buffer)
+//        file.readFully(buffer, offset, MAX_NODE_SIZE)
+    } catch (e: IOError) {
+        println(e)
+        println("Failed to read bytes at [$offset; $offset + $MAX_NODE_SIZE) ")
+    }
+    return Json.decodeFromString(buffer.toString())
+}
 
+inline fun <reified NodeType> setValue(offset: Int, node: NodeType) : Unit {
+    val buffer = Json.encodeToString(node).toByteArray().copyOf(MAX_NODE_SIZE)
+    file.seek(offset.toLong())
+    file.writeBytes(buffer.toString())
+//    file.write(buffer, offset, MAX_NODE_SIZE)
+}
+
+@Serializable
+class ListNode(val offset: Int) {
+    fun save() = setValue(offset, this)
+    private var nextAddress: Int? = null
+    var next: ListNode?
+        get() {
+            return nextAddress?.let{ readNode(it) }
         }
+        set(value) {
+            nextAddress = value?.offset
+            save()
+        }
+    var data: String = ""
+        set(value: String) {
+            field = value
+            save()
+        }
+}
 
-        fun setValue(node: Any, property: KProperty<*>) : Unit {
-            val buffer = Json.encodeToString(node).toByteArray().copyOf(MAX_NODE_SIZE)
-            file.write(buffer, offset, MAX_NODE_SIZE)
+class StringList {
+    var root: ListNode? = null
+    var head: ListNode? = null
+
+    fun addChunk(chunk: String) {
+        assert(chunk.length <= MAX_STRING_SIZE)
+        val offset = firstFreeOffset++
+        val newNode = ListNode(offset)
+        newNode.data = chunk
+        if (head != null) {
+            head?.next = newNode
+            head = newNode
+        } else {
+            root = newNode
+            head = newNode
         }
     }
-
-    inner class ListNode(val offset: Int) {
-        var nextPtr: NodePointer? = null
-        fun next
+    fun add(str: String) = str.chunked(MAX_STRING_SIZE).forEach{ addChunk(it) }
+    override fun toString() : String{
+        return buildString {
+            var v : ListNode? = root
+            while (v != null) {
+                append(v.data)
+                v = v.next
+            }
+        }
     }
 }
 
 fun main(args: Array<String>) {
+    println("Hello")
+    val l = StringList()
+    l.add("kekdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd")
+    println(l.root)
+    println(l)
+    println("Bye")
 }
