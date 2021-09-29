@@ -29,28 +29,33 @@ fun ByteArray.toHex(): String = asUByteArray().joinToString("") { it.toString(ra
 fun stringHash(str: String): ByteArray = MessageDigest.getInstance("SHA-256").digest(str.toByteArray(UTF_8))
 
 val MAX_STRING_SIZE = 32
-val MAX_NODE_SIZE = 64
-val file = RandomAccessFile("file.txt", "rw")
+val MAX_NODE_SIZE = 128
+var file = RandomAccessFile("file.txt", "rw")
 var firstFreeOffset = 0
 
 inline fun <reified NodeType> readNode(offset: Int) : NodeType {
     val buffer = ByteArray(MAX_NODE_SIZE)
     try {
         file.seek(offset.toLong())
-        file.read(buffer)
-//        file.readFully(buffer, offset, MAX_NODE_SIZE)
-    } catch (e: IOError) {
+        file.readFully(buffer, 0, MAX_NODE_SIZE)
+    } catch (e: Exception) {
         println(e)
         println("Failed to read bytes at [$offset; $offset + $MAX_NODE_SIZE) ")
     }
-    return Json.decodeFromString(buffer.toString())
+
+    return Json.decodeFromString(buffer.decodeToString().trimEnd(Char(0)))
 }
 
 inline fun <reified NodeType> setValue(offset: Int, node: NodeType) : Unit {
+    println("Trying to write bytes at [$offset; $offset + $MAX_NODE_SIZE), data = ${Json.encodeToString(node)}")
     val buffer = Json.encodeToString(node).toByteArray().copyOf(MAX_NODE_SIZE)
-    file.seek(offset.toLong())
-    file.writeBytes(buffer.toString())
-//    file.write(buffer, offset, MAX_NODE_SIZE)
+    try {
+        file.seek(offset.toLong())
+        file.write(buffer, 0, MAX_NODE_SIZE)
+    } catch (e: Exception) {
+        println(e)
+        println("Failed to write bytes at [$offset; $offset + $MAX_NODE_SIZE) ")
+    }
 }
 
 @Serializable
@@ -70,6 +75,10 @@ class ListNode(val offset: Int) {
             field = value
             save()
         }
+    init {
+        println("Create node with offset = $offset")
+        save()
+    }
 }
 
 class StringList {
@@ -78,7 +87,8 @@ class StringList {
 
     fun addChunk(chunk: String) {
         assert(chunk.length <= MAX_STRING_SIZE)
-        val offset = firstFreeOffset++
+        val offset = firstFreeOffset
+        firstFreeOffset += MAX_NODE_SIZE
         val newNode = ListNode(offset)
         newNode.data = chunk
         if (head != null) {
@@ -102,10 +112,7 @@ class StringList {
 }
 
 fun main(args: Array<String>) {
-    println("Hello")
     val l = StringList()
-    l.add("kekdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd")
-    println(l.root)
+    l.add("abc}}}{{{<><}}}")
     println(l)
-    println("Bye")
 }
