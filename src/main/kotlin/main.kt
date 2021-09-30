@@ -8,225 +8,145 @@ import kotlin.properties.Delegates
 import kotlin.random.Random
 
 /**
- * Converts array of bytes to a hex string
- * @receiver array of bytes
- * @return string where each byte is encoded by 2 chars
- *
- * Usage:
- * assertEquals("010c13ac", byteArrayOf(1, 12, 19, -84).toHex())
- */
-@ExperimentalUnsignedTypes
-fun ByteArray.toHex(): String = asUByteArray().joinToString("") { it.toString(radix = 16).padStart(2, '0') }
-
-/**
- * Returns SHA-256 hash for a given string as an array of 32 bytes
+ * Returns last bits of SHA-256 hash for a given string as a Long
  * @param[str] string for which we want to get hash
  *
- * Usage:
- * assertEquals("315f5bdb76d078c43b8ac0064e4a0164612b1fce77c869345bfc94c75894edd3", stringHash("Hello, world!").toHex())
  */
-fun stringHash(str: String): ByteArray = MessageDigest.getInstance("SHA-256").digest(str.toByteArray(Charsets.UTF_8))
-
-
-val MAX_STRING_SIZE = 32
-val MAX_NODE_SIZE = 128
-var file = RandomAccessFile("file.txt", "rw")
-
-object Allocator {
-    private var firstFreeOffset = 0
-    fun getFreeOffset() : Int {
-        return firstFreeOffset.also{ firstFreeOffset += MAX_NODE_SIZE }
-    }
+fun stringHash(str: String): Long {
+    val bytes = MessageDigest.getInstance("SHA-256").digest(str.toByteArray(Charsets.UTF_8))
+    return bytes.fold(0) { acc, e -> 256 * acc + e.toLong() }
 }
 
+class Database(val databaseName: String) {
+    val content = RandomAccessFile(databaseName + ".content", "rw")
+    val index = RandomAccessFile(databaseName + ".index", "rw")
 
-inline fun <reified NodeType> readNode(offset: Int) : NodeType {
-    val buffer = ByteArray(MAX_NODE_SIZE)
-    try {
-        file.seek(offset.toLong())
-        file.readFully(buffer, 0, MAX_NODE_SIZE)
-    } catch (e: Exception) {
-        println(e)
-        println("Failed to read bytes at [$offset; $offset + $MAX_NODE_SIZE) ")
+    private fun addString(str: String) : Long {
+        content.seek(content.length())
+        return content.length().also{ content.writeUTF(str) }
+    }
+    private fun getString(pos: Long) : String {
+        if (pos >= content.length()) {
+            throw IndexOutOfBoundsException("Indexed content file of length ${content.length()} with $pos")
+        }
+        content.seek(pos)
+        return content.readUTF()
     }
 
-    return Json.decodeFromString(buffer.decodeToString().trimEnd(Char(0)))
-}
-
-inline fun <reified NodeType> setValue(offset: Int, node: NodeType) : Unit {
-    println("Trying to write bytes at [$offset; $offset + $MAX_NODE_SIZE), data = ${Json.encodeToString(node)}")
-    val buffer = Json.encodeToString(node).toByteArray().copyOf(MAX_NODE_SIZE)
-    try {
-        file.seek(offset.toLong())
-        file.write(buffer, 0, MAX_NODE_SIZE)
-    } catch (e: Exception) {
-        println(e)
-        println("Failed to write bytes at [$offset; $offset + $MAX_NODE_SIZE) ")
+    private fun setLong(pos: Long, value: Long) {
+        index.seek(pos)
+        index.writeLong(value.toLong())
     }
-}
-
-@Serializable
-class ListNode(val offset: Int) {
-    fun save() = setValue(offset, this)
-    private var nextAddress: Int? = null
-    var next: ListNode?
-        get() {
-            return nextAddress?.let{ readNode(it) }
+    private fun getLong(pos: Long) : Long {
+        if (pos >= index.length()) {
+            throw IndexOutOfBoundsException("Indexed index file of length ${index.length()} with $pos")
         }
-        set(value) {
-            nextAddress = value?.offset
-            save()
-        }
-    var data: String by Delegates.observable("") { _, _, _ -> save() }
-    init {
-        save()
+        index.seek(pos)
+        return content.readLong().toLong()
     }
-}
 
-fun stringToList(str: String) : ListNode? {
-    var root: ListNode? = null
-    fun addChunk(chunk: String) {
-        assert(chunk.length <= MAX_STRING_SIZE)
-        val newNode = ListNode(Allocator.getFreeOffset())
-        newNode.next = root
-        root = newNode
-    }
-    str.chunked(MAX_STRING_SIZE).reversed().forEach{ addChunk(it) }
-    return root
-}
+    val BYTES_IN_LONG = 8
+    val NO_KEY = 0L
+    val DELETED = 1L
 
-fun listToString(v: ListNode?) : String {
-    return buildString {
-        while (v != null) {
-            append(v.data)
-            v = v.next
-        }
-    }
-}
+    val FIELDS_COUNT = 3L
+    val KEY_HASH = 0L
+    val KEY_POS = 1L
+    val VALUE_POS = 2L
 
-@Serializable
-class TreapNode(val offset: Int) {
-    fun save() = setValue(offset, this)
-    private var leftAddress: Int? = null
-    private var rightAddress: Int? = null
-    private var keyListAddress: Int? = null
-    private var valueListAddress: Int? = null
-    var left: TreapNode?
-        get() {
-            return leftAddress?.let{ readNode(it) }
-        }
-        set(value) {
-            leftAddress = value?.offset
-            save()
-        }
-    var right: TreapNode?
-        get() {
-            return rightAddress?.let{ readNode(it) }
-        }
-        set(value) {
-            rightAddress = value?.offset
-            save()
-        }
-    var keyList: ListNode?
-        get() {
-            return keyListAddress?.let{ readNode(it) }
-        }
-        set(value) {
-            keyListAddress = value?.offset
-            save()
-        }
-    var valueList: ListNode?
-        get() {
-            return valueListAddress?.let{ readNode(it) }
-        }
-        set(value) {
-            valueListAddress = value?.offset
-            save()
-        }
-    var keyHash: String by Delegates.observable("") { _, _, _ -> save() }
-    var priority: Int by Delegates.observable(0) { _, _, _ -> save() }
-    init {
-        save()
-    }
-}
+    fun tableSize() = index.length() / (FIELDS_COUNT * BYTES_IN_LONG)
+    var freeCells = 0L
 
-@ExperimentalUnsignedTypes
-fun allocateTreapNode(key: String, value: String) : TreapNode {
-    val v = TreapNode(Allocator.getFreeOffset())
-    v.keyList = stringToList(key)
-    v.valueList = stringToList(value)
-    v.keyHash = stringHash(key).toHex()
-    v.priority = Random.nextInt()
-    return v
-}
+    private fun itemsIndex() : List<Pair<Long, Long>> {
+        val buffer = mutableListOf<Pair<Long, Long>>()
+        for (i in 0 until tableSize()) {
+            val keyPos = getLong(i * FIELDS_COUNT + KEY_POS)
+            val valuePos = getLong(i * FIELDS_COUNT + VALUE_POS)
+            buffer.add(Pair(keyPos, valuePos))
+        }
+        return buffer
+    }
+    fun items() : List<Pair<String, String>> = itemsIndex().map{ (i, j) -> Pair(getString(i), getString(j))}
 
-fun merge(left: TreapNode?, right: TreapNode?) : TreapNode? {
-    if (left == null) {
-        return right
+    private fun findIndex(key: String, acceptDeleted: Boolean) : Long {
+        val keyHash = stringHash(key)
+        fun checkIndex(i: Long) : Boolean {
+            when (getLong(i * FIELDS_COUNT + KEY_HASH)) {
+                keyHash -> return true
+                NO_KEY -> return true
+                DELETED -> return acceptDeleted
+                else -> return false
+            }
+        }
+        val startPos = keyHash % tableSize()
+        for (i in startPos until tableSize())
+            if (checkIndex(i))
+                return i
+        for (i in 0 until startPos)
+            if (checkIndex(i))
+                return i
+        throw Exception("Database overflow, nothing found in findIndex(key = $key, acceptDeleted = $acceptDeleted)")
     }
-    if (right == null) {
-        return left
+    private fun setIndex(keyPos: Long, valuePos: Long) {
+        val key = getString(keyPos)
+        val i = findIndex(key, true)
+        when (getLong(i * FIELDS_COUNT + KEY_HASH)) {
+            NO_KEY -> {
+                freeCells--
+                setLong(i * FIELDS_COUNT + KEY_HASH, stringHash(key))
+                setLong(i * FIELDS_COUNT + KEY_POS, keyPos)
+                setLong(i * FIELDS_COUNT + VALUE_POS, valuePos)
+            }
+            DELETED -> {
+                throw Exception("Deleted objects aren't expected in setByIndex")
+            }
+            else -> {
+                throw Exception("Overwriting isn't expected in setByIndex")
+            }
+        }
+        if (freeCells < tableSize() / 2) {
+            resize()
+        }
     }
-    if (left.priority < right.priority) {
-        left.right = merge(left.right, right)
-        return left
-    } else {
-        right.left = merge(left, right.left)
-        return right
+    fun set(key: String, value: String) {
+        val i = findIndex(key, true)
+        when (getLong(i * FIELDS_COUNT + KEY_HASH)) {
+            NO_KEY, DELETED -> {
+                freeCells--
+                setLong(i * FIELDS_COUNT + KEY_HASH, stringHash(key))
+                setLong(i * FIELDS_COUNT + KEY_POS, addString(key))
+                setLong(i * FIELDS_COUNT + VALUE_POS, addString(value))
+            }
+            else -> {
+                setLong(i * FIELDS_COUNT + VALUE_POS, addString(value))
+            }
+        }
+    }
+    fun find(key: String) : String {
+        val i = findIndex(key, false)
+        if (getLong(i * FIELDS_COUNT + KEY_HASH) == NO_KEY) {
+            return ""
+        }
+        return getString(getLong(i * FIELDS_COUNT + VALUE_POS))
+    }
+    fun del(key: String) {
+        val i = findIndex(key, false)
+        setLong(i * FIELDS_COUNT + KEY_HASH, DELETED)
+    }
+    fun resize() {
+        val newSize = tableSize() * 2
+        val save = itemsIndex()
+        index.setLength(FIELDS_COUNT * BYTES_IN_LONG * newSize)
+        for (i in 0 until tableSize()) {
+            setLong(i * FIELDS_COUNT + KEY_HASH, NO_KEY)
+        }
+        freeCells = tableSize()
+        for ((key, value) in save) {
+            setIndex(key, value)
+        }
     }
 }
-
-/**
- * Splits treap into two parts with keyHashes in (-inf, keyHash] and [keyHash + 1, +inf)
- *
- * @param[tree] root of treap to split
- * @param[keyHash] max keyHash to leave in left resulting tree
- */
-
-fun split(tree: TreapNode?, keyHash: String) : Pair<TreapNode?, TreapNode?> {
-    if (tree == null) {
-        return Pair(null, null)
-    }
-    if (keyHash < tree.keyHash) {
-        val (leftRes, treeLeft) = split(tree.left, keyHash)
-        tree.left = treeLeft
-        return Pair(leftRes, tree)
-    } else {
-        val (treeRight, rightRes) = split(tree.right, keyHash)
-        tree.right = treeRight
-        return Pair(treeRight, rightRes)
-    }
-}
-
-fun insert(tree: TreapNode?, newNode: TreapNode) : TreapNode? {
-    assert(newNode.left == null)
-    assert(newNode.right == null)
-    if (tree == null) {
-        return newNode
-    }
-    when {
-        newNode.priority < tree.priority -> {
-            val (splitLeft, splitRight) = split(tree, newNode.keyHash)
-            newNode.left = splitLeft
-            newNode.right = splitRight
-            return newNode
-        }
-        newNode.keyHash < tree.keyHash -> {
-            tree.left = insert(tree.left, newNode)
-            return tree
-        }
-        newNode.keyHash > tree.keyHash -> {
-            tree.right = insert(tree.right, newNode)
-            return tree
-        }
-        else -> assert(false)
-    }
-}
-
-
 
 fun main(args: Array<String>) {
-    val l = StringList()
-    l.add("abc}}}{{{<><}}}")
-    println(l)
+
 }
