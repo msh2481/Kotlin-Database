@@ -1,12 +1,11 @@
-import java.io.IOError
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.io.RandomAccessFile
 import java.security.MessageDigest
-import kotlin.reflect.KProperty
-import kotlin.text.Charsets.UTF_8
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.decodeFromString
+import kotlin.properties.Delegates
+import kotlin.random.Random
 
 /**
  * Converts array of bytes to a hex string
@@ -26,12 +25,20 @@ fun ByteArray.toHex(): String = asUByteArray().joinToString("") { it.toString(ra
  * Usage:
  * assertEquals("315f5bdb76d078c43b8ac0064e4a0164612b1fce77c869345bfc94c75894edd3", stringHash("Hello, world!").toHex())
  */
-fun stringHash(str: String): ByteArray = MessageDigest.getInstance("SHA-256").digest(str.toByteArray(UTF_8))
+fun stringHash(str: String): ByteArray = MessageDigest.getInstance("SHA-256").digest(str.toByteArray(Charsets.UTF_8))
+
 
 val MAX_STRING_SIZE = 32
 val MAX_NODE_SIZE = 128
 var file = RandomAccessFile("file.txt", "rw")
-var firstFreeOffset = 0
+
+object Allocator {
+    private var firstFreeOffset = 0
+    fun getFreeOffset() : Int {
+        return firstFreeOffset.also{ firstFreeOffset += MAX_NODE_SIZE }
+    }
+}
+
 
 inline fun <reified NodeType> readNode(offset: Int) : NodeType {
     val buffer = ByteArray(MAX_NODE_SIZE)
@@ -70,46 +77,153 @@ class ListNode(val offset: Int) {
             nextAddress = value?.offset
             save()
         }
-    var data: String = ""
-        set(value: String) {
-            field = value
-            save()
-        }
+    var data: String by Delegates.observable("") { _, _, _ -> save() }
     init {
-        println("Create node with offset = $offset")
         save()
     }
 }
 
-class StringList {
+fun stringToList(str: String) : ListNode? {
     var root: ListNode? = null
-    var head: ListNode? = null
-
     fun addChunk(chunk: String) {
         assert(chunk.length <= MAX_STRING_SIZE)
-        val offset = firstFreeOffset
-        firstFreeOffset += MAX_NODE_SIZE
-        val newNode = ListNode(offset)
-        newNode.data = chunk
-        if (head != null) {
-            head?.next = newNode
-            head = newNode
-        } else {
-            root = newNode
-            head = newNode
-        }
+        val newNode = ListNode(Allocator.getFreeOffset())
+        newNode.next = root
+        root = newNode
     }
-    fun add(str: String) = str.chunked(MAX_STRING_SIZE).forEach{ addChunk(it) }
-    override fun toString() : String{
-        return buildString {
-            var v : ListNode? = root
-            while (v != null) {
-                append(v.data)
-                v = v.next
-            }
+    str.chunked(MAX_STRING_SIZE).reversed().forEach{ addChunk(it) }
+    return root
+}
+
+fun listToString(v: ListNode?) : String {
+    return buildString {
+        while (v != null) {
+            append(v.data)
+            v = v.next
         }
     }
 }
+
+@Serializable
+class TreapNode(val offset: Int) {
+    fun save() = setValue(offset, this)
+    private var leftAddress: Int? = null
+    private var rightAddress: Int? = null
+    private var keyListAddress: Int? = null
+    private var valueListAddress: Int? = null
+    var left: TreapNode?
+        get() {
+            return leftAddress?.let{ readNode(it) }
+        }
+        set(value) {
+            leftAddress = value?.offset
+            save()
+        }
+    var right: TreapNode?
+        get() {
+            return rightAddress?.let{ readNode(it) }
+        }
+        set(value) {
+            rightAddress = value?.offset
+            save()
+        }
+    var keyList: ListNode?
+        get() {
+            return keyListAddress?.let{ readNode(it) }
+        }
+        set(value) {
+            keyListAddress = value?.offset
+            save()
+        }
+    var valueList: ListNode?
+        get() {
+            return valueListAddress?.let{ readNode(it) }
+        }
+        set(value) {
+            valueListAddress = value?.offset
+            save()
+        }
+    var keyHash: String by Delegates.observable("") { _, _, _ -> save() }
+    var priority: Int by Delegates.observable(0) { _, _, _ -> save() }
+    init {
+        save()
+    }
+}
+
+@ExperimentalUnsignedTypes
+fun allocateTreapNode(key: String, value: String) : TreapNode {
+    val v = TreapNode(Allocator.getFreeOffset())
+    v.keyList = stringToList(key)
+    v.valueList = stringToList(value)
+    v.keyHash = stringHash(key).toHex()
+    v.priority = Random.nextInt()
+    return v
+}
+
+fun merge(left: TreapNode?, right: TreapNode?) : TreapNode? {
+    if (left == null) {
+        return right
+    }
+    if (right == null) {
+        return left
+    }
+    if (left.priority < right.priority) {
+        left.right = merge(left.right, right)
+        return left
+    } else {
+        right.left = merge(left, right.left)
+        return right
+    }
+}
+
+/**
+ * Splits treap into two parts with keyHashes in (-inf, keyHash] and [keyHash + 1, +inf)
+ *
+ * @param[tree] root of treap to split
+ * @param[keyHash] max keyHash to leave in left resulting tree
+ */
+
+fun split(tree: TreapNode?, keyHash: String) : Pair<TreapNode?, TreapNode?> {
+    if (tree == null) {
+        return Pair(null, null)
+    }
+    if (keyHash < tree.keyHash) {
+        val (leftRes, treeLeft) = split(tree.left, keyHash)
+        tree.left = treeLeft
+        return Pair(leftRes, tree)
+    } else {
+        val (treeRight, rightRes) = split(tree.right, keyHash)
+        tree.right = treeRight
+        return Pair(treeRight, rightRes)
+    }
+}
+
+fun insert(tree: TreapNode?, newNode: TreapNode) : TreapNode? {
+    assert(newNode.left == null)
+    assert(newNode.right == null)
+    if (tree == null) {
+        return newNode
+    }
+    when {
+        newNode.priority < tree.priority -> {
+            val (splitLeft, splitRight) = split(tree, newNode.keyHash)
+            newNode.left = splitLeft
+            newNode.right = splitRight
+            return newNode
+        }
+        newNode.keyHash < tree.keyHash -> {
+            tree.left = insert(tree.left, newNode)
+            return tree
+        }
+        newNode.keyHash > tree.keyHash -> {
+            tree.right = insert(tree.right, newNode)
+            return tree
+        }
+        else -> assert(false)
+    }
+}
+
+
 
 fun main(args: Array<String>) {
     val l = StringList()
