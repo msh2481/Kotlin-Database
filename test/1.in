@@ -1,8 +1,8 @@
 create database
 store key value
 store key other_value
-store РєР»СЋС‡ Р·РЅР°С‡РµРЅРёРµ
+store ключ значение
 fetch key
-fetch РєР»СЋС‡
+fetch ключ
 fetch other_key
 print

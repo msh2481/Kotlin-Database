@@ -5,8 +5,17 @@ fetch KEY               to print value for KEY
 append NAME             to add all key-value pairs from database NAME to the current database (overwriting, if needed)
 print                   to print content of the current database
 exit                    to quit program
-other_value
-значение
+1 1
+2 2
+3 3
+3 3
+4 5
+5 6
+1 1
+2 2
 
-key other_value
-ключ значение
+1
+2
+3
+5
+6

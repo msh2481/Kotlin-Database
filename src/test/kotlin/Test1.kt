@@ -3,6 +3,7 @@ import java.io.PrintStream
 import java.io.File
 import java.io.FileInputStream
 import kotlin.math.sin
+import kotlin.system.measureNanoTime
 import kotlin.test.*
 
 internal class Test1 {
@@ -23,6 +24,13 @@ internal class Test1 {
     }
 
     @Test
+    fun hashTest() {
+        assertEquals(-6659529605712332715, stringHash(""))
+        assertEquals(-5151987661469235269, stringHash("a"))
+        assertEquals(6555996166944976083, stringHash("Hello, world!"))
+    }
+
+    @Test
     fun testDatabase() {
         val db = Database("database", true)
         for (i in 1..100) {
@@ -37,19 +45,22 @@ internal class Test1 {
         for (i in -1000..-1) {
             assertEquals("", db.fetch(i.toString()))
         }
-        assertEquals(2090390714, setOf(db.items()).hashCode())
+        assertEquals(-1481962552, db.items().hashCode())
     }
 
     fun singleTestFromFiles(testName: String) {
+        setUp()
         System.setIn(FileInputStream("test/$testName.in"))
         main(arrayOf())
         assertEquals(File("test/$testName.ans").readText().filter{ it != '\r'}, streamOut.toString().trim().filter{ it != '\r'})
+        tearDown()
     }
 
     @Test
     fun testFullFromFiles() {
-        for (i in 1..1) {
-            singleTestFromFiles(i.toString())
+        for (i in 1..3) {
+            val t = measureNanoTime { singleTestFromFiles(i.toString()) }
+            println("Test $i in ${t / 1e6}ms")
         }
     }
 }
