@@ -1,12 +1,23 @@
+import mu.KotlinLogging
 import java.io.RandomAccessFile
+import java.security.MessageDigest
 import kotlin.math.max
-import kotlin.system.measureNanoTime
+
+val logger = KotlinLogging.logger{}
 
 /** TODO
- * Measure number of tries
+ * Own exceptions
+ * Find logging library
+ * Logging with levels
+ * Different files
  * Select best hash
  * Add tests
  * Add docs
+ *
+ * ---
+ * Optimize:
+ *      Measure number of tries
+ *      Exceptions
  */
 
 /**
@@ -15,12 +26,11 @@ import kotlin.system.measureNanoTime
  *
  */
 fun stringHash(str: String): Long {
-//    val bytes = MessageDigest.getInstance("SHA-256").digest(str.toByteArray(Charsets.UTF_8))
-//    return bytes.fold(0) { acc, e -> 256 * acc + e.toLong() }
-    return str.toLong()
+    val bytes = MessageDigest.getInstance("SHA-256").digest(str.toByteArray(Charsets.UTF_8))
+    return bytes.fold(0) { acc, e -> 256 * acc + e.toLong() }
 }
 
-class Database(val databaseName: String) {
+class Database(val databaseName: String, clearOldData: Boolean) {
     val content = RandomAccessFile(databaseName + ".content", "rw")
     val index = RandomAccessFile(databaseName + ".index", "rw")
 
@@ -29,22 +39,17 @@ class Database(val databaseName: String) {
         return content.length().also{ content.writeUTF(str) }
     }
     private fun getString(pos: Long) : String {
-        if (pos >= content.length()) {
-            throw IndexOutOfBoundsException("Indexed content file of length ${content.length()} with $pos")
-        }
+        require(pos < content.length()) {"Indexed content file of length ${content.length()} with $pos"}
         content.seek(pos)
         return content.readUTF()
     }
 
     private fun setLong(pos: Long, value: Long) {
-//        println("setLong(pos = $pos, value = $value")
         index.seek(pos)
         index.writeLong(value)
     }
     private fun getLong(pos: Long) : Long {
-        if (pos >= index.length()) {
-            throw IndexOutOfBoundsException("Indexed index file of length ${index.length()} with $pos")
-        }
+        require(pos < index.length()) {"Indexed index file of length ${index.length()} with $pos"}
         try {
             index.seek(pos)
             return index.readLong()
@@ -57,8 +62,8 @@ class Database(val databaseName: String) {
     val BYTES_IN_LONG = 8
     val FIELDS_COUNT = 3L
 
-    val NO_KEY = 0L
-    val DELETED = 1L
+    val NO_KEY = -1L
+    val DELETED = -2L
 
     val FIELDS_WIDTH = FIELDS_COUNT * BYTES_IN_LONG
     val KEY_HASH = 0 * BYTES_IN_LONG
@@ -83,10 +88,13 @@ class Database(val databaseName: String) {
         return buffer
     }
     fun items() : List<Pair<String, String>> = itemsIndex().map{ (i, j) -> Pair(getString(i), getString(j))}
+    var checkIndexCounter = 0
+    var lastCounter = 0
 
     private fun findIndex(key: String, acceptDeleted: Boolean) : Long {
         val keyHash = stringHash(key)
         fun checkIndex(i: Long) : Boolean {
+            checkIndexCounter++
             when (getLong(i * FIELDS_WIDTH + KEY_HASH)) {
                 keyHash -> return true
                 NO_KEY -> return true
@@ -94,6 +102,8 @@ class Database(val databaseName: String) {
                 else -> return false
             }
         }
+        lastCounter = checkIndexCounter
+
         val startPos = (keyHash.toULong() % tableSize().toULong()).toLong()
         for (i in startPos until tableSize())
             if (checkIndex(i))
@@ -101,16 +111,16 @@ class Database(val databaseName: String) {
         for (i in 0 until startPos)
             if (checkIndex(i))
                 return i
-        throw Exception("Database overflow, nothing found in findIndex(key = $key, acceptDeleted = $acceptDeleted)")
+        check(false) {"Database overflow, nothing found in findIndex(key = $key, acceptDeleted = $acceptDeleted)"}
+        return 0
     }
-    private fun setIndex(keyPos: Long, valuePos: Long) {
-        assert(keyPos >= 0 && valuePos >= 0)
+    private fun storeIndex(keyPos: Long, valuePos: Long) {
+        require(keyPos >= 0 && valuePos >= 0)
         val key = getString(keyPos)
-//        println("setIndex(key = $key, value = ${getString(valuePos)}")
         val i = findIndex(key, true)
         when (getLong(i * FIELDS_WIDTH + KEY_HASH)) {
             DELETED -> {
-                throw Exception("Deleted objects aren't expected in setByIndex")
+                check(false) {"Deleted objects aren't expected in setByIndex"}
             }
             NO_KEY -> {
                 freeCells--
@@ -119,16 +129,12 @@ class Database(val databaseName: String) {
                 setLong(i * FIELDS_WIDTH + VALUE_POS, valuePos)
             }
             else -> {
-//                println(getLong(i * FIELDS_WIDTH + KEY_HASH))
-//                println(getLong(i * FIELDS_WIDTH + KEY_POS))
-//                println(getLong(i * FIELDS_WIDTH + VALUE_POS))
-//                println("${stringHash(key)}, $keyPos, $valuePos")
-                throw Exception("Overwriting isn't expected in setIndex")
+                check(false) {"Overwriting isn't expected in setIndex"}
             }
         }
     }
-    fun set(key: String, value: String) {
-//        println("set(key = $key, value = $value")
+    fun store(key: String, value: String) {
+        logger.info{ "store $key $value" }
         val i = findIndex(key, true)
         when (getLong(i * FIELDS_WIDTH + KEY_HASH)) {
             NO_KEY, DELETED -> {
@@ -145,7 +151,7 @@ class Database(val databaseName: String) {
             resize()
         }
     }
-    fun find(key: String) : String {
+    fun fetch(key: String) : String {
         val i = findIndex(key, false)
         if (getLong(i * FIELDS_WIDTH + KEY_HASH) == NO_KEY) {
             return ""
@@ -164,17 +170,22 @@ class Database(val databaseName: String) {
         }
     }
     fun resize() {
-        val newSize = max(tableSize(), 1) * 2
+        val newSize = max(tableSize(), 1024) * 2
+        logger.info{ "resize ${tableSize()} -> $newSize" }
         val save = itemsIndex()
         index.setLength(FIELDS_WIDTH * newSize)
         clear()
         freeCells = tableSize()
         for ((key, value) in save) {
-            setIndex(key, value)
+            storeIndex(key, value)
         }
-        assert(freeCells >= tableSize() / 2)
+        check(freeCells >= tableSize() / 2)
     }
     init {
+        if (clearOldData) {
+            index.setLength(0)
+            content.setLength(0)
+        }
         if (index.length() % FIELDS_WIDTH > 0) {
             throw Exception("Index file has incorrect length")
         }
@@ -185,20 +196,43 @@ class Database(val databaseName: String) {
     }
 }
 
+fun greeting() = println("""
+    create NAME             to switch to a new empty database NAME
+    open NAME               to switch to database NAME from files NAME.index and NAME.content
+    store KEY VALUE         to set value for KEY equal to VALUE (overwriting, if needed)
+    fetch KEY               to print value for KEY
+    append NAME             to add all key-value pairs from database NAME to the current database (overwriting, if needed)
+    print                   to print content of the current database
+    exit                    to quit program
+""".trimIndent())
+
+
 fun main(args: Array<String>) {
-    val db = Database("tmp")
-    val t1 = measureNanoTime {
-        for (i in 1L..15000L) {
-            db.set(i.toString(), (i * i).toString())
+    greeting()
+    var db : Database? = null
+    while (true) {
+        val line = readLine()
+        val tokens = line?.split(' ', '\t') ?: break
+        val argsByCommand = mapOf("create" to 1, "open" to 1, "store" to 2, "fetch" to 1, "append" to 1, "print" to 0, "exit" to 0)
+        if (tokens.isEmpty() || tokens.first() !in argsByCommand || tokens.size < 1 + checkNotNull(argsByCommand[tokens.first()])) {
+            println("Failed to parse your input or not enough arguments for this command:\n$line")
+            continue
+        }
+        if (tokens.first() in listOf("create", "open")) {
+            db = Database(tokens[1], tokens.first() == "create")
+            continue
+        }
+        if (db == null) {
+            println("There is no open database, nothing will be done")
+            continue
+        }
+        when (tokens.first()) {
+            "store" ->  db.store(tokens[1], tokens[2])
+            "fetch" -> println(db.fetch(tokens[1]))
+            "append" -> Database(tokens[1], false).items().forEach{ (key, value) -> db.store(key, value) }
+            "print" -> db.items().forEach{ (key, value) -> println("$key $value") }
+            "exit" -> break
+            else -> check(false) {"Unknown command exists in argsByCommand: ${tokens.first()}"}
         }
     }
-    val t2 = measureNanoTime {
-        var s = 0L
-        for (i in 1L..15000L) {
-            s += db.find(i.toString()).toLong()
-        }
-        println(s)
-    }
-    println(t1 / 1e6)
-    println(t2 / 1e6)
 }
