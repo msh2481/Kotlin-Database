@@ -2,8 +2,8 @@ import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import java.io.File
 import java.io.FileInputStream
+import kotlin.math.sin
 import kotlin.test.*
-import kotlin.text.Charsets.UTF_8
 
 internal class Test1 {
     private val standardOut = System.out
@@ -43,7 +43,7 @@ internal class Test1 {
     fun singleTestFromFiles(testName: String) {
         System.setIn(FileInputStream("test/$testName.in"))
         main(arrayOf())
-        assertEquals(File("test/$testName.ans").readText(Charsets.UTF_8), streamOut.toString().trim())
+        assertEquals(File("test/$testName.ans").readText().filter{ it != '\r'}, streamOut.toString().trim().filter{ it != '\r'})
     }
 
     @Test
