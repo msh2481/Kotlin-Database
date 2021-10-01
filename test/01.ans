@@ -1,0 +1,26 @@
+create NAME             to create new empty database NAME
+open NAME FILE          to open database NAME from FILE
+close NAME              to remove database NAME from memory
+store NAME KEY VALUE    to assign NAME[KEY] = VALUE
+fetch NAME KEY          to print NAME[KEY]
+save NAME FILE          to write database NAME to FILE
+print NAME              to print content of database NAME
+copy A B                to insert content of database A into database B
+exit                    to quit program
+There is no such key in the database
+
+1
+25
+There is no such key in the database
+
+There is no such key in the database
+
+There is no such key in the database
+
+Content of b:
+1 1
+2 4
+3 9
+4 16
+5 25
+Failed to parse your command: quit
