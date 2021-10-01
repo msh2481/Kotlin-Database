@@ -2,6 +2,8 @@ import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import java.io.File
 import java.io.FileInputStream
+import kotlin.math.sin
+import kotlin.system.measureNanoTime
 import kotlin.test.*
 
 internal class Test1 {
@@ -22,54 +24,43 @@ internal class Test1 {
     }
 
     @Test
-    fun testDatabase() {
-        val db = Database()
-        db.store("key", "value")
-        assertEquals("", db.fetch("other key"))
-        assertEquals("value", db.fetch("key"))
-        val json = db.encodeToJson()
-        assertEquals("{\"data\":{\"key\":\"value\"}}", json)
-        val db2 = Database(json)
-        assertEquals("value", db2.fetch("key"))
-        val db3 = Database()
-        db3.store("key", "new value")
-        db2.import(db3)
-        print(db2)
-        assertEquals("There is no such key in the database\n" +
-                "key new value".trim(), streamOut.toString().trim().filter{ it != '\r'})
+    fun hashTest() {
+        assertEquals(-6659529605712332715, stringHash(""))
+        assertEquals(-5151987661469235269, stringHash("a"))
+        assertEquals(6555996166944976083, stringHash("Hello, world!"))
     }
 
     @Test
-    fun testDatabaseList() {
-        DatabaseList.create("a")
-        DatabaseList.store("a", "ключ", "значение")
-        assertEquals("Content of a:\n" +
-                "ключ значение", DatabaseList.print("a"))
-        DatabaseList.store("a", "key 1", "value 1")
-        DatabaseList.store("a", "key 2", "value 2")
-        assertEquals("значение", DatabaseList.fetch("a", "ключ"))
-        assertEquals("", DatabaseList.fetch("a", "b"))
-        assertEquals("", DatabaseList.fetch("b", "b"))
-        DatabaseList.save("a", "a.txt")
-        DatabaseList.close("a")
-        DatabaseList.open("b", "a.txt")
-        DatabaseList.open("c", "no.file")
-        assertEquals("value 1", DatabaseList.fetch("b", "key 1"))
-        DatabaseList.create("c")
-        assertEquals("There is no such key in the database\n" +
-                "There is no such database\n" +
-                "Can't open file no.file".trim(), streamOut.toString().trim().filter{ it != '\r'})
+    fun testDatabase() {
+        val db = Database("database", true)
+        for (i in 1..100) {
+            db.store(i.toString(), (i * i).toString())
+        }
+        for (i in 1..1000) {
+            db.store(i.toString(), (2 * i).toString())
+        }
+        for (i in 1..1000) {
+            assertEquals((2 * i).toString(), db.fetch(i.toString()))
+        }
+        for (i in -1000..-1) {
+            assertEquals("", db.fetch(i.toString()))
+        }
+        assertEquals(-1481962552, db.items().hashCode())
     }
 
-    fun singleTestFromFiles(inputFilename: String, answerFilename: String) {
-        val prefix = "test/"
-        System.setIn(FileInputStream(prefix + inputFilename))
+    fun singleTestFromFiles(testName: String) {
+        setUp()
+        System.setIn(FileInputStream("test/$testName.in"))
         main(arrayOf())
-        assertEquals(File(prefix + answerFilename).readText().filter{ it != '\r'}, streamOut.toString().trim().filter{ it != '\r'})
+        assertEquals(File("test/$testName.ans").readText().filter{ it != '\r'}, streamOut.toString().trim().filter{ it != '\r'})
+        tearDown()
     }
 
     @Test
     fun testFullFromFiles() {
-        singleTestFromFiles("01.in", "01.ans")
+        for (i in 1..3) {
+            val t = measureNanoTime { singleTestFromFiles(i.toString()) }
+            println("Test $i in ${t / 1e6}ms")
+        }
     }
 }

@@ -1,0 +1,21 @@
+create NAME             to switch to a new empty database NAME
+open NAME               to switch to database NAME from files NAME.index and NAME.content
+store KEY VALUE         to set value for KEY equal to VALUE (overwriting, if needed)
+fetch KEY               to print value for KEY
+append NAME             to add all key-value pairs from database NAME to the current database (overwriting, if needed)
+print                   to print content of the current database
+exit                    to quit program
+1 1
+2 2
+3 3
+3 3
+4 5
+5 6
+1 1
+2 2
+
+1
+2
+3
+5
+6

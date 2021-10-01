@@ -14,8 +14,9 @@ repositories {
 dependencies {
     implementation(kotlin("stdlib"))
     testImplementation(kotlin("test"))
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.3.0-RC")
-    implementation("com.github.ajalt.clikt:clikt:3.2.0")
+    
+    implementation("io.github.microutils:kotlin-logging-jvm:2.0.10")
+    implementation("org.slf4j:slf4j-simple:1.7.29")
 }
 
 tasks.getByName<Test>("test") {

@@ -1,0 +1,8 @@
+create database
+store key value
+store key other_value
+store ключ значение
+fetch key
+fetch ключ
+fetch other_key
+print
