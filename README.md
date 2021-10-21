@@ -1,11 +1,8 @@
-# Курс основ программирования на МКН СПбГУ
-## Проект 2: key-value база данных
+# Basics of programming course: key-value database
 
-[Постановка задачи](./TASK.md)
+## Running of the database
 
-## Использование программы
-
-Передавать аргументы при запуске не нужно. Взаимодействие осуществляется интерактивно. При старте будет выведен список команд и их синтаксис, а именно:
+No command-line arguments are needed, all commands are read interactively. After launch a help text with all supported commands and their syntax will be printed.
 
     create NAME             to switch to a new empty database NAME
     open NAME               to switch to database NAME from files NAME.index and NAME.content
@@ -15,7 +12,7 @@
     print                   to print content of the current database
     exit                    to quit program
 
-Пример взаимодействия:
+Example of an interaction:
 
     $ pf-2021-kvdb-msh2481.bat
     > create db1
@@ -30,14 +27,12 @@
     abracadabra
     > exit
 
-## Внутреннее устройство
+## Internal design
 
-База данных хранится в двух файлах: NAME.index и NAME.content,
-где NAME - имя этой базы данных. В первом лежит хеш-таблица,
-по хешу ключа выдающая адреса ключа и значения во втором файле. 
-Иными словами, массив троек вида (хеш ключа: Long, адрес ключа: Long, адрес значения: Long).
-А во втором файле лежат строки, перед которыми записаны их длины (как это делает RandomAccessFile.writeUTF()).
+A database NAME is stored in two files: NAME.index and NAME.content.
+First one is basically an open addressing hash table mapping key hashes to addresses of key and value in second file,
+and second is just sequence of strings with length written before each string (as RandomAccessFile.writeUTF() does).
 
-За счёт подобной структуры можно работать с базой данных, не считывая и не сохраняя целиком весь её файл.
-Однако, при этом на каждый запрос приходится читать данные из файла, из-за чего скорость обработки
-составляет несколько тысяч штук в секунду.
+Using such structure makes possible working with database without reading the whole file, but because each operation is
+reading from file (that is, from disk), speed is much lower than that of hash tables located in RAM, namely, a few thousands
+queries per second.
